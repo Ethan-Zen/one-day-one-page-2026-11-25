@@ -47,14 +47,43 @@ if (bitDepth !== 8 || (colourType !== 2 && colourType !== 6)) {
   refuse(`bit depth ${bitDepth} colour type ${colourType} is not the 8-bit RGB this page ships`);
 }
 
-// 4. a whole file ends on IEND, so the image data is complete
-if (bytes.toString("latin1", bytes.length - 8, bytes.length - 4) !== "IEND") {
-  refuse("the file does not end on the IEND chunk");
+// 4. walk every chunk: the length must fit in the file and the stream must
+//    reach IEND, so a truncated download or a half-written copy is refused here
+//    rather than at the gate
+let at = 8;
+let sawIDAT = false;
+let sawEnd = false;
+while (at + 12 <= bytes.length) {
+  const length = bytes.readUInt32BE(at);
+  const type = bytes.toString("latin1", at + 4, at + 8);
+  if (length > bytes.length - at - 12) refuse(`the ${type} chunk runs past the end of the file`);
+  if (type === "IDAT") sawIDAT = true;
+  at += 12 + length;
+  if (type === "IEND") {
+    sawEnd = true;
+    break;
+  }
 }
+if (!sawIDAT) refuse("no IDAT chunk, so the file carries no image data");
+if (!sawEnd) refuse("the chunk stream never reaches IEND");
+if (at !== bytes.length) refuse(`${bytes.length - at} bytes follow IEND`);
 
 mkdirSync(outDir, { recursive: true });
-writeFileSync(outPath, bytes);
+
+// 5. writing twice must give the same bytes, so a second run that finds its own
+//    output in place leaves it alone instead of touching the file
+let alreadyThere = false;
+try {
+  alreadyThere = readFileSync(outPath).equals(bytes);
+} catch {
+  alreadyThere = false;
+}
+if (alreadyThere) {
+  console.log(`${outPath} already holds these bytes`);
+} else {
+  writeFileSync(outPath, bytes);
+  console.log(`wrote ${outPath}`);
+}
 
 const digest = createHash("sha256").update(bytes).digest("hex");
-console.log(`wrote ${outPath}`);
 console.log(`${bytes.length} bytes, ${width}x${height}, sha256 ${digest}`);
