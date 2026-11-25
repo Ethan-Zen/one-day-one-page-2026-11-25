@@ -1,0 +1,8 @@
+{
+  "name": "one-day-one-page-2026-11-25",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Writes the page that sums up 25 November 2026 to /output/entry.png",
+  "license": "MIT"
+}
